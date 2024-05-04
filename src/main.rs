@@ -1,4 +1,12 @@
 use bevy::prelude::*;
+use bevy_editor_pls::prelude::*;
+use bevy_prototype_lyon::{draw, prelude::*, shapes::Line};
+
+const LEFT_WALL: f32 = -400.;
+const RIGHT_WALL: f32 = 400.;
+// y coordinates
+const BOTTOM_WALL: f32 = -300.;
+const TOP_WALL: f32 = 300.;
 
 fn main() {
     App::new()
@@ -13,82 +21,119 @@ fn main() {
                         ..default()
                     }),
                     ..default()
-                }),
-        )
+                }),)
+        .add_plugins(EditorPlugin::default())
+        .add_plugins(ShapePlugin)
+        .insert_resource(ClearColor(Color::rgb(0., 0., 0.)))
+        .insert_resource(Msaa::Sample4)
         .add_systems(Startup, setup)
-        .add_systems(FixedUpdate, player_movement_system)
+        .add_systems(FixedUpdate, (player_movement_system, draw_lines_system))
         .run();
 }
 
-// PLAYER COMPONENT
 #[derive(Component)]
-struct Player {
-    texture: Handle<Image>,
-    sprite: Sprite,
-    orientation: f32,
+struct Player {}
+
+#[derive(Component, Debug)]
+struct Movable {
     rotation_speed: f32,
     acceleration: f32,
     speed: f32,
 }
 
+#[derive(Component)]
+struct AccelerationText {}
+
 fn setup(mut commands: Commands, asset_server: Res<AssetServer>) {
-    
+    // Game assets
     let rocket_handle = asset_server.load("rocket.png");
     // Camera
-    commands.spawn(Camera2dBundle {
-        camera: Camera {
-            clear_color: ClearColorConfig::Custom(Color::WHITE),
-            ..default()
-        },
-        ..default()
-    });
+    commands.spawn(Camera2dBundle::default());
 
     // Player
-    commands.spawn(
-        Player {
-            texture: rocket_handle,
-            sprite: Sprite {custom_size: Some(Vec2::new(100.0, 100.0)), ..default()},
-            orientation: 0.0,
-            rotation_speed: f32::to_radians(360.0),
+    commands.spawn((
+        SpriteBundle {
+            sprite: Sprite {
+                custom_size: Some(Vec2::new(50.0, 50.0)),
+                ..default()
+            },
+            texture: rocket_handle.clone(),
+            ..default()
+        },
+        Player {},
+        Movable {
+            rotation_speed: 3.0,
             acceleration: 10.0,
-            speed: 10.0,            
-        }
-    );
+            speed: 0.0,
+        },
+    ));
 }
 
 fn player_movement_system(
     time: Res<Time>,
     keyboard_input: Res<ButtonInput<KeyCode>>,
-    mut query: Query<(&Player, &mut Transform)>,
+    mut query: Query<(&mut Movable, &mut Transform), With<Player>>,
 ) {
-    let (ship, mut transform) = query.single_mut();
+    let (mut ship_movement, mut ship_transform) = query.single_mut();
+    let mut rotation_factor: f32 = 0.0;
+    let mut acceleration_factor: f32 = 0.0;
+    let facing_towards: Direction3d = ship_transform.local_x();
+    let movement_direction: Vec3 = ship_transform.translation;
+    let current_rotation: Quat = ship_transform.rotation;
 
-    let mut rotation_factor = 0.0;
-    let mut movement_factor = 0.0;
-
-    if keyboard_input.pressed(KeyCode::ArrowLeft) {
+    // handle inputs
+    if keyboard_input.pressed(KeyCode::KeyA) {
         rotation_factor += 1.0;
-    }
+    };
 
-    if keyboard_input.pressed(KeyCode::ArrowRight) {
+    if keyboard_input.pressed(KeyCode::KeyD) {
         rotation_factor -= 1.0;
+    };
+
+    if keyboard_input.pressed(KeyCode::KeyW) {
+        acceleration_factor += 1.0;
+    };
+
+    if keyboard_input.just_pressed(KeyCode::Space) {
+        println!("- - -\nfacing towards {:?}, movement direction {:?}, speed {:?}, current rotation {:?}", facing_towards, movement_direction, ship_movement.speed, current_rotation);
+    };
+
+    // rotate ship
+    ship_transform.rotate_z(rotation_factor * ship_movement.rotation_speed * time.delta_seconds());
+
+    // accelerate ship
+    ship_transform.translation += (movement_direction * ship_movement.speed
+        + facing_towards * acceleration_factor * ship_movement.acceleration)
+        * time.delta_seconds();
+
+    // keep ship inside bounds
+    if ship_transform.translation.x < LEFT_WALL {
+        ship_transform.translation.x = RIGHT_WALL;
     }
-
-    if keyboard_input.pressed(KeyCode::ArrowUp) {
-        movement_factor += 1.0;
+    if ship_transform.translation.x > RIGHT_WALL {
+        ship_transform.translation.x = LEFT_WALL;
     }
+    if ship_transform.translation.y < BOTTOM_WALL {
+        ship_transform.translation.y = TOP_WALL;
+    }
+    if ship_transform.translation.y > TOP_WALL {
+        ship_transform.translation.y = BOTTOM_WALL;
 
-    // update the ship rotation around the Z axis (perpendicular to the 2D plane of the screen)
-    transform.rotate_z(rotation_factor * ship.rotation_speed * time.delta_seconds());
+    //draw lines
+    enum Lines {
+        
+    } 
+    player_movement_system(time, keyboard_input, query)
+    }
+}
 
-    // get the ship's forward vector by applying the current rotation to the ships initial facing
-    // vector
-    let movement_direction = transform.rotation * Vec3::Y;
-    // get the distance the ship will move based on direction, the ship's movement speed and delta
-    // time
-    let movement_distance = movement_factor * ship.speed * time.delta_seconds();
-    // create the change in translation using the new movement direction and distance
-    let translation_delta = movement_direction * movement_distance;
-    // update the ship translation with our new translation delta
-    transform.translation += translation_delta;
+fn draw_lines_system(start_point: Vec2, end_point: Vec2, mut commands: Commands) {
+    let shape = Line(start_point, end_point);
+    commands.spawn((
+        GeometryBuilder::build_as(&shape),
+        DrawMode::Stroke {
+            outline_mode: StrokeMode::new(Color::WHITE, 10.0),
+        },
+        Transform::default(),
+    ));
 }
