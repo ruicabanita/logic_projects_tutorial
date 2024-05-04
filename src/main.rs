@@ -66,9 +66,9 @@ fn setup(mut commands: Commands, asset_server: Res<AssetServer>) {
         },
         Player {},
         Movable {
-            rotation_speed: 3.0,
-            acceleration: 10.0,
-            max_speed: 300.0,
+            rotation_speed: 4.0,
+            acceleration: 3.0,
+            max_speed: 360.0,
         },
         Velocity::default(),
         Name::new("Player"),
