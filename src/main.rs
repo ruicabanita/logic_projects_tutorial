@@ -68,7 +68,7 @@ fn setup(mut commands: Commands, asset_server: Res<AssetServer>) {
         Movable {
             rotation_speed: 3.0,
             acceleration: 10.0,
-            max_speed: 100.0,
+            max_speed: 300.0,
         },
         Velocity::default(),
         Name::new("Player"),
@@ -84,8 +84,6 @@ fn player_movement_system(
     let mut rotation_factor: f32 = 0.0;
     let mut acceleration_factor: f32 = 0.0;
     let facing_towards = ship_transform.local_y().xy();
-    // let movement_direction = ship_transform.translation.xz().normalize();
-    // let current_rotation: Quat = ship_transform.rotation;
 
     // handle inputs
     if keyboard_input.pressed(KeyCode::KeyA) {
@@ -103,16 +101,18 @@ fn player_movement_system(
     // rotate ship
     ship_transform.rotate_z(rotation_factor * ship_movement.rotation_speed * time.delta_seconds());
 
+    // accelerate ship by calculating new linear velocity
     velocity.linear_velocity += facing_towards * acceleration_factor * ship_movement.acceleration;
 
+    // prevent the ship from moving too fast for gameplay purposes
     velocity.linear_velocity = velocity
         .linear_velocity
         .clamp_length(0.0, ship_movement.max_speed);
 
-    // accelerate ship
+    // update ship position
     ship_transform.translation += velocity.linear_velocity.extend(0.0) * time.delta_seconds();
 
-    // keep ship inside bounds
+    // keep ship inside bounds by wraping it around
     if ship_transform.translation.x < LEFT_WALL {
         ship_transform.translation.x = RIGHT_WALL;
     }
