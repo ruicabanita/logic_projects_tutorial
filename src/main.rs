@@ -1,6 +1,5 @@
 use bevy::prelude::*;
 use bevy_editor_pls::prelude::*;
-use bevy_prototype_lyon::{draw, prelude::*, shapes::Line};
 
 const LEFT_WALL: f32 = -400.;
 const RIGHT_WALL: f32 = 400.;
@@ -21,28 +20,33 @@ fn main() {
                         ..default()
                     }),
                     ..default()
-                }),)
+                }),
+        )
+        .register_type::<Movable>()
+        .register_type::<Velocity>()
         .add_plugins(EditorPlugin::default())
-        .add_plugins(ShapePlugin)
         .insert_resource(ClearColor(Color::rgb(0., 0., 0.)))
-        .insert_resource(Msaa::Sample4)
         .add_systems(Startup, setup)
-        .add_systems(FixedUpdate, (player_movement_system, draw_lines_system))
+        .add_systems(FixedUpdate, player_movement_system)
+        .add_systems(Update, draw_lines_system)
         .run();
 }
 
 #[derive(Component)]
-struct Player {}
+struct Player;
 
-#[derive(Component, Debug)]
+#[derive(Component, Debug, Reflect)]
 struct Movable {
     rotation_speed: f32,
     acceleration: f32,
-    speed: f32,
+    max_speed: f32,
 }
 
-#[derive(Component)]
-struct AccelerationText {}
+#[derive(Component, Default, Reflect)]
+struct Velocity {
+    linear_velocity: Vec2,
+    angular_velocity: f32,
+}
 
 fn setup(mut commands: Commands, asset_server: Res<AssetServer>) {
     // Game assets
@@ -64,22 +68,24 @@ fn setup(mut commands: Commands, asset_server: Res<AssetServer>) {
         Movable {
             rotation_speed: 3.0,
             acceleration: 10.0,
-            speed: 0.0,
+            max_speed: 100.0,
         },
+        Velocity::default(),
+        Name::new("Player"),
     ));
 }
 
 fn player_movement_system(
     time: Res<Time>,
     keyboard_input: Res<ButtonInput<KeyCode>>,
-    mut query: Query<(&mut Movable, &mut Transform), With<Player>>,
+    mut query: Query<(&Movable, &mut Velocity, &mut Transform), With<Player>>,
 ) {
-    let (mut ship_movement, mut ship_transform) = query.single_mut();
+    let (ship_movement, mut velocity, mut ship_transform) = query.single_mut();
     let mut rotation_factor: f32 = 0.0;
     let mut acceleration_factor: f32 = 0.0;
-    let facing_towards: Direction3d = ship_transform.local_x();
-    let movement_direction: Vec3 = ship_transform.translation;
-    let current_rotation: Quat = ship_transform.rotation;
+    let facing_towards = ship_transform.local_y().xy();
+    // let movement_direction = ship_transform.translation.xz().normalize();
+    // let current_rotation: Quat = ship_transform.rotation;
 
     // handle inputs
     if keyboard_input.pressed(KeyCode::KeyA) {
@@ -94,17 +100,17 @@ fn player_movement_system(
         acceleration_factor += 1.0;
     };
 
-    if keyboard_input.just_pressed(KeyCode::Space) {
-        println!("- - -\nfacing towards {:?}, movement direction {:?}, speed {:?}, current rotation {:?}", facing_towards, movement_direction, ship_movement.speed, current_rotation);
-    };
-
     // rotate ship
     ship_transform.rotate_z(rotation_factor * ship_movement.rotation_speed * time.delta_seconds());
 
+    velocity.linear_velocity += facing_towards * acceleration_factor * ship_movement.acceleration;
+
+    velocity.linear_velocity = velocity
+        .linear_velocity
+        .clamp_length(0.0, ship_movement.max_speed);
+
     // accelerate ship
-    ship_transform.translation += (movement_direction * ship_movement.speed
-        + facing_towards * acceleration_factor * ship_movement.acceleration)
-        * time.delta_seconds();
+    ship_transform.translation += velocity.linear_velocity.extend(0.0) * time.delta_seconds();
 
     // keep ship inside bounds
     if ship_transform.translation.x < LEFT_WALL {
@@ -119,21 +125,17 @@ fn player_movement_system(
     if ship_transform.translation.y > TOP_WALL {
         ship_transform.translation.y = BOTTOM_WALL;
 
-    //draw lines
-    enum Lines {
-        
-    } 
-    player_movement_system(time, keyboard_input, query)
+        //draw lines
+        // player_movement_system(time, keyboard_input, query);
     }
 }
 
-fn draw_lines_system(start_point: Vec2, end_point: Vec2, mut commands: Commands) {
-    let shape = Line(start_point, end_point);
-    commands.spawn((
-        GeometryBuilder::build_as(&shape),
-        DrawMode::Stroke {
-            outline_mode: StrokeMode::new(Color::WHITE, 10.0),
-        },
-        Transform::default(),
-    ));
+fn draw_lines_system(query: Query<(&Velocity, &Transform), With<Player>>, mut gizmos: Gizmos) {
+    for (velocity, transform) in &query {
+        let position = transform.translation;
+        // let facing = transform.local_y();
+        let start = position.xy();
+        gizmos.line_2d(start, start + velocity.linear_velocity * 10.0, Color::RED);
+        // gizmos.line_2d(start, start + facing.xy() * 25.0, Color::GREEN);
+    }
 }
